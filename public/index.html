@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Financeiro - Creche</title>
+    <style>
+        :root { --primary-color: #3498db; --success-color: #2ecc71; --danger-color: #e74c3c; --warning-color: #f39c12; --light-gray: #f4f7f6; --dark-gray: #34495e; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--light-gray); color: var(--dark-gray); margin: 0; }
+        .container { max-width: 1400px; margin: auto; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin: 20px 0; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.05); border-left: 5px solid var(--primary-color); }
+        .card h3 { margin-top: 0; font-size: 1rem; color: #7f8c8d; }
+        .card p { font-size: 1.8em; font-weight: 600; margin: 0; }
+        nav.tabs { border-bottom: 2px solid #ddd; margin-bottom: 20px; }
+        nav.tabs button { background: none; border: none; padding: 15px 20px; font-size: 1rem; cursor: pointer; }
+        nav.tabs button.active { border-bottom: 3px solid var(--primary-color); font-weight: bold; }
+        .content-panel { display: none; }
+        .content-panel.active { display: block; }
+        table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 4px 8px rgba(0,0,0,0.05); }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #f9fafb; font-size: 0.9em; text-transform: uppercase; }
+        .status { padding: 5px 10px; border-radius: 15px; font-weight: 500; color: white; font-size: 0.85em; text-align: center; }
+        .status.pago { background-color: var(--success-color); }
+        .status.vencido { background-color: var(--danger-color); }
+        .status.pendente { background-color: var(--warning-color); }
+        .student-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .student-lists ul { list-style: none; padding: 15px; background: white; border-radius: 8px; }
+        .student-lists li { padding: 8px 0; border-bottom: 1px solid #eee; }
+        form { background: white; padding: 20px; border-radius: 8px; display: grid; grid-template-columns: 3fr 1fr 1fr 1fr; gap: 15px; align-items: end; }
+        input, button { padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; }
+        button { background-color: var(--primary-color); color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>Painel Financeiro da Creche</h1><h2>Setembro, 2025</h2></div>
+
+        <div class="kpis" id="kpis-container"></div>
+
+        <nav class="tabs" id="tab-navigation">
+            <button class="active" data-target="panel-mensalidades">Relatório de Mensalidades</button>
+            <button data-target="panel-despesas">Relatório de Despesas</button>
+            <button data-target="panel-alunos">Situação dos Alunos</button>
+        </nav>
+
+        <div id="panel-mensalidades" class="content-panel active">
+            <h2>Mensalidades (Via Asaas)</h2>
+            <table><thead><tr><th>Aluno</th><th>Responsável</th><th>Vencimento</th><th>Valor</th><th>Status</th><th>Ação</th></tr></thead><tbody id="table-mensalidades"></tbody></table>
+        </div>
+
+        <div id="panel-despesas" class="content-panel">
+            <h2>Despesas (Interno)</h2>
+            <form id="form-despesa">
+                <input type="text" id="input-descricao" placeholder="Descrição da despesa" required>
+                <input type="text" id="input-categoria" placeholder="Categoria" required>
+                <input type="number" id="input-valor" placeholder="Valor (R$)" step="0.01" required>
+                <button type="submit">Adicionar Despesa</button>
+            </form>
+            <br>
+            <table><thead><tr><th>Descrição</th><th>Categoria</th><th>Data</th><th>Valor</th></tr></thead><tbody id="table-despesas"></tbody></table>
+        </div>
+
+        <div id="panel-alunos" class="content-panel">
+            <div class="student-lists">
+                <div><h2>✅ Alunos Adimplentes</h2><ul id="list-adimplentes"></ul></div>
+                <div><h2>❌ Alunos Inadimplentes</h2><ul id="list-inadimplentes"></ul></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÃO ---
+        const API_BASE_URL = 'http://localhost:3000/api';
+
+        // --- FUNÇÕES DE LÓGICA ---
+        const formatCurrency = (value) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+        function renderKPIs(kpis) {
+            document.getElementById('kpis-container').innerHTML = `
+                <div class="card"><h3>Faturamento Previsto</h3><p>${formatCurrency(kpis.faturamentoPrevisto)}</p></div>
+                <div class="card" style="border-color: var(--success-color);"><h3>Valor Recebido</h3><p>${formatCurrency(kpis.valorRecebido)}</p></div>
+                <div class="card" style="border-color: var(--danger-color);"><h3>Despesas</h3><p>${formatCurrency(kpis.totalDespesas)}</p></div>
+                <div class="card" style="border-color: #9b59b6;"><h3>Saldo</h3><p>${formatCurrency(kpis.saldo)}</p></div>
+            `;
+        }
+
+        function renderTableMensalidades(mensalidades) {
+            const tbody = document.getElementById('table-mensalidades');
+            tbody.innerHTML = mensalidades.map(m => `
+                <tr>
+                    <td>${m.nomeAluno}</td>
+                    <td>${m.nomeResponsavel}</td>
+                    <td>${new Date(m.vencimento).toLocaleDateString('pt-BR')}</td>
+                    <td>${formatCurrency(m.valor)}</td>
+                    <td><span class="status ${m.status.toLowerCase()}">${m.status}</span></td>
+                    <td><a href="${m.linkPagamento}" target="_blank">Ver Fatura</a></td>
+                </tr>
+            `).join('');
+        }
+
+        function renderTableDespesas(despesas) {
+            const tbody = document.getElementById('table-despesas');
+            tbody.innerHTML = despesas.map(d => `
+                <tr>
+                    <td>${d.descricao}</td>
+                    <td>${d.categoria}</td>
+                    <td>${new Date(d.data).toLocaleDateString('pt-BR')}</td>
+                    <td>${formatCurrency(d.valor)}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function handleAddDespesa(event) {
+            event.preventDefault();
+            const descricao = document.getElementById('input-descricao').value;
+            const categoria = document.getElementById('input-categoria').value;
+            const valor = document.getElementById('input-valor').value;
+
+            const response = await fetch(`${API_BASE_URL}/expenses`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ descricao, categoria, valor })
+            });
+
+            if(response.ok) {
+                document.getElementById('form-despesa').reset();
+                loadMainDashboard(); // Recarrega os dados para mostrar a nova despesa
+            }
+        }
+
+        async function loadStudentStatus() {
+            const response = await fetch(`${API_BASE_URL}/students/status`);
+            const { adimplentes, inadimplentes } = await response.json();
+
+            document.getElementById('list-adimplentes').innerHTML = adimplentes.map(a => `<li>${a.nome}</li>`).join('');
+            document.getElementById('list-inadimplentes').innerHTML = inadimplentes.map(a => `<li>${a.nome} (Responsável: ${a.responsavel})</li>`).join('');
+        }
+        
+        async function loadMainDashboard() {
+            const response = await fetch(`${API_BASE_URL}/financial-overview`);
+            const data = await response.json();
+            renderKPIs(data.kpis);
+            renderTableMensalidades(data.relatorioMensalidades);
+            renderTableDespesas(data.relatorioDespesas);
+        }
+
+        function setupTabs() {
+            const tabs = document.querySelectorAll('#tab-navigation button');
+            const panels = document.querySelectorAll('.content-panel');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    panels.forEach(p => p.classList.remove('active'));
+
+                    tab.classList.add('active');
+                    const targetPanel = document.getElementById(tab.dataset.target);
+                    targetPanel.classList.add('active');
+
+                    if (tab.dataset.target === 'panel-alunos') {
+                        loadStudentStatus();
+                    }
+                });
+            });
+        }
+
+        // --- INICIALIZAÇÃO ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadMainDashboard();
+            setupTabs();
+            document.getElementById('form-despesa').addEventListener('submit', handleAddDespesa);
+        });
+    </script>
+</body>
+</html>
